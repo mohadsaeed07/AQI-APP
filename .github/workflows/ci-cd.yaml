@@ -75,7 +75,6 @@ jobs:
 
     - name: Validate Manifests Against K8s Schema
       run: |
-        # Validate all YAML manifests in k8s/ (ignoring secret.yaml as it is generated)
         kubeconform -summary -strict -ignore-missing-schemas k8s/backend.yaml k8s/frontend.yaml
 
   # ====================================================
@@ -92,6 +91,11 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    # Converts 'mohadsaeed07/AQI-APP' to lowercase 'mohadsaeed07/aqi-app' for Docker compatibility
+    - name: Set Lowercase Image Repository Name
+      run: |
+        echo "IMAGE_REPO=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
     - name: Log in to GitHub Container Registry (ghcr.io)
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       uses: docker/login-action@v3
@@ -102,16 +106,16 @@ jobs:
 
     - name: Build Backend Image
       run: |
-        docker build -t ghcr.io/${{ github.repository }}/backend:${{ github.sha }} -t ghcr.io/${{ github.repository }}/backend:latest -f Dockerfile.backend .
+        docker build -t ${{ env.IMAGE_REPO }}/backend:${{ github.sha }} -t ${{ env.IMAGE_REPO }}/backend:latest -f Dockerfile.backend .
 
     - name: Build Frontend Image
       run: |
-        docker build -t ghcr.io/${{ github.repository }}/frontend:${{ github.sha }} -t ghcr.io/${{ github.repository }}/frontend:latest -f Dockerfile.frontend .
+        docker build -t ${{ env.IMAGE_REPO }}/frontend:${{ github.sha }} -t ${{ env.IMAGE_REPO }}/frontend:latest -f Dockerfile.frontend .
 
     - name: Scan Backend Image for Vulnerabilities (Trivy)
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+        image-ref: ${{ env.IMAGE_REPO }}/backend:${{ github.sha }}
         format: 'table'
         exit-code: '0'
         severity: 'CRITICAL,HIGH'
@@ -119,7 +123,7 @@ jobs:
     - name: Push Container Images to ghcr.io
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       run: |
-        docker push ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
-        docker push ghcr.io/${{ github.repository }}/backend:latest
-        docker push ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
-        docker push ghcr.io/${{ github.repository }}/frontend:latest
+        docker push ${{ env.IMAGE_REPO }}/backend:${{ github.sha }}
+        docker push ${{ env.IMAGE_REPO }}/backend:latest
+        docker push ${{ env.IMAGE_REPO }}/frontend:${{ github.sha }}
+        docker push ${{ env.IMAGE_REPO }}/frontend:latest
