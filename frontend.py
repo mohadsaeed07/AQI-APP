@@ -1,17 +1,19 @@
-import streamlit as st
-import requests
+import os
+
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import requests
+import streamlit as st
 
-# 1. Page configuration
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
 st.set_page_config(page_title="AQI Intelligence", page_icon="🌍", layout="wide")
 
-# --- PROFESSIONAL HEADER BAR (Theme Matched) ---
-st.markdown("""
+st.markdown(
+    """
     <style>
     .header-bar {
-        background-color: #455A64; /* Matched to Chart Color */
+        background-color: #455A64;
         padding: 25px;
         border-radius: 0px 0px 15px 15px;
         margin-bottom: 35px;
@@ -19,7 +21,7 @@ st.markdown("""
         text-align: left;
     }
     .header-title {
-        color: #FFFFFF; /* White text for contrast */
+        color: #FFFFFF;
         font-family: 'Helvetica Neue', sans-serif;
         font-size: 36px;
         font-weight: 800;
@@ -27,7 +29,7 @@ st.markdown("""
         margin: 0;
     }
     .header-subtitle {
-        color: #CFD8DC; /* Light Blue-Grey for subtitle */
+        color: #CFD8DC;
         font-size: 14px;
         font-weight: 600;
         text-transform: uppercase;
@@ -40,32 +42,38 @@ st.markdown("""
         <div class="header-subtitle">Environmental Monitoring Intelligence</div>
         <div class="header-title">REAL-TIME AQI TRACKER</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# 3. SEARCH AREA
 with st.container():
     col_in1, col_in2 = st.columns([4, 1])
     with col_in1:
-        city = st.text_input("SEARCH", value="Islamabad", label_visibility="collapsed", placeholder="Enter city name (e.g. London, Tokyo, Lahore)...")
+        city = st.text_input(
+            "SEARCH",
+            value="Islamabad",
+            label_visibility="collapsed",
+            placeholder="Enter city name (e.g. London, Tokyo, Lahore)...",
+        )
     with col_in2:
         run_button = st.button("RUN ANALYSIS", use_container_width=True)
 
 if run_button:
     try:
-        # Fetch Data from Backend
-        curr_resp = requests.get(f"http://127.0.0.1:8000/aqi?city={city}")
-        curr_data = curr_resp.json()
+        curr_resp = requests.get(f"{BACKEND_URL}/aqi?city={city}", timeout=15)
 
-        if "error" in curr_data:
-            st.error("City not found. Please check the spelling.")
+        if curr_resp.status_code == 404:
+            st.error(f"City '{city}' not found. Please verify the spelling.")
+        elif curr_resp.status_code != 200:
+            error_msg = curr_resp.json().get("detail", "Failed to retrieve AQI data.")
+            st.error(f"Error ({curr_resp.status_code}): {error_msg}")
         else:
-            # Extract Main Metrics
-            aqi_num = curr_data.get('aqi_reading')
-            status = curr_data.get('status')
-            safety = curr_data.get('safety')
-            p_data = curr_data.get('pollutants', {})
+            curr_data = curr_resp.json()
+            aqi_num = curr_data.get("aqi_reading")
+            status = curr_data.get("status")
+            safety = curr_data.get("safety")
+            p_data = curr_data.get("pollutants", {})
 
-            # --- ROW 1: KEY METRICS ---
             st.write("### Dashboard Overview")
             m1, m2, m3 = st.columns(3)
             m1.metric("US-AQI SCORE", aqi_num)
@@ -73,48 +81,57 @@ if run_button:
             m3.metric("SAFETY", safety)
             st.write("---")
 
-            # --- ROW 2: MAP & POLLUTANTS ---
             left, right = st.columns(2)
             with left:
                 st.subheader(f"📍 Location: {city.title()}")
-                map_df = pd.DataFrame({'lat': [curr_data['lat']], 'lon': [curr_data['lon']]})
+                map_df = pd.DataFrame(
+                    {"lat": [curr_data["lat"]], "lon": [curr_data["lon"]]}
+                )
                 st.map(map_df, zoom=11)
-            
+
             with right:
                 st.subheader("📊 Pollutant Breakdown")
                 chart_df = pd.DataFrame({
-                    'Pollutant': [k.upper() for k in p_data.keys()],
-                    'Value': list(p_data.values())
+                    "Pollutant": [k.upper() for k in p_data],
+                    "Value": list(p_data.values()),
                 })
-                fig_poll = px.bar(chart_df, x='Pollutant', y='Value', color='Value', 
-                                  color_continuous_scale='Reds', template="plotly_white")
+                fig_poll = px.bar(
+                    chart_df,
+                    x="Pollutant",
+                    y="Value",
+                    color="Value",
+                    color_continuous_scale="Reds",
+                    template="plotly_white",
+                )
                 st.plotly_chart(fig_poll, use_container_width=True)
 
-            # --- ROW 3: 5-DAY FORECAST ---
             st.write("---")
             st.subheader("🗓️ 5-Day Air Quality Forecast")
-            fore_resp = requests.get(f"http://127.0.0.1:8000/forecast?city={city}")
-            fore_data = fore_resp.json()
+            fore_resp = requests.get(f"{BACKEND_URL}/forecast?city={city}", timeout=15)
 
-            if "forecast" in fore_data:
-                f_df = pd.DataFrame(fore_data['forecast'])
-                f_df['date'] = pd.to_datetime(f_df['date'], unit='s').dt.strftime('%b %d')
+            if fore_resp.status_code == 200:
+                fore_data = fore_resp.json()
+                if "forecast" in fore_data:
+                    f_df = pd.DataFrame(fore_data["forecast"])
+                    f_df["date"] = pd.to_datetime(f_df["date"], unit="s").dt.strftime("%b %d")
 
-                fig_fore = px.bar(
-                    f_df, x='date', y='aqi_score', text='aqi_score',
-                    labels={'aqi_score': 'AQI Score', 'date': 'Date'},
-                    color_discrete_sequence=['#455A64']
-                )
-                fig_fore.update_traces(textposition='outside', opacity=0.85)
-                fig_fore.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis=dict(range=[0, 500]),
-                    xaxis_title=None
-                )
-                st.plotly_chart(fig_fore, use_container_width=True)
+                    fig_fore = px.bar(
+                        f_df,
+                        x="date",
+                        y="aqi_score",
+                        text="aqi_score",
+                        labels={"aqi_score": "AQI Score", "date": "Date"},
+                        color_discrete_sequence=["#455A64"],
+                    )
+                    fig_fore.update_traces(textposition="outside", opacity=0.85)
+                    fig_fore.update_layout(
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        yaxis={"range": [0, 500]},
+                        xaxis_title=None,
+                    )
+                    st.plotly_chart(fig_fore, use_container_width=True)
+            else:
+                st.warning("Could not load 5-day forecast at this time.")
 
     except Exception as e:
-        st.error(f"⚠️ Connection Error: Ensure your FastAPI server is running on port 8000. ({e})")
-        
-        
-        
+        st.error(f"⚠️ Connection Error: Unable to reach backend at {BACKEND_URL}. ({e})")

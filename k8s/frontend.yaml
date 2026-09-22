@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aqi-frontend
+  labels:
+    app: aqi-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aqi-frontend
+  template:
+    metadata:
+      labels:
+        app: aqi-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: aqi-frontend:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+        env:
+        - name: BACKEND_URL
+          value: "http://aqi-backend-service:8000"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aqi-frontend-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: aqi-frontend
+  ports:
+  - port: 8501
+    targetPort: 8501

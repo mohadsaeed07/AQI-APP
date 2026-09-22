@@ -2,4 +2,10 @@ venv/
 .env
 __pycache__/
 *.pyc
+.DS_Store.env
+k8s/secret.yaml
+venv/
+__pycache__/
+*.pyc
 .DS_Store
+.pytest_cache/
